@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ory-frontend
+  namespace: geo-ory
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ory-frontend
+  template:
+    metadata:
+      labels:
+        app: ory-frontend
+    spec:
+      containers:
+      - name: ory-frontend
+        image: antoinecmbld/ory-frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NEXT_PUBLIC_ORY_KRATOS_PUBLIC_URL
+          value: "https://kratos.combaldieu.fr"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ory-frontend
+  namespace: geo-ory
+spec:
+  selector:
+    app: ory-frontend
+  ports:
+  - port: 80
+    targetPort: 3000
