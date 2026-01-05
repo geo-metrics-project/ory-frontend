@@ -2,9 +2,9 @@ name: Build and Push Docker Image
 
 on:
   push:
-    branches: [ master ]  # Trigger on push to master
+    branches: [ main ]  # Trigger on push to master
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
 
 jobs:
   build-and-push:
