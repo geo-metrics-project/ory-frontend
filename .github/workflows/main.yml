@@ -33,6 +33,6 @@ jobs:
       with:
         context: .
         push: true
-        tags: ghcr.io/${{ format('{0}', github.repository) }}:latest
+        tags: ghcr.io/${{ github.repository }}:latest
         build-args: |
           NEXT_PUBLIC_ORY_KRATOS_PUBLIC_URL=https://kratos.combaldieu.fr
