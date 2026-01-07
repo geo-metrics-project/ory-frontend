@@ -33,4 +33,6 @@ jobs:
       with:
         context: .
         push: true
-        tags: ghcr.io/geo-metrics-project/ory-frontend:latest  # Update repo
+        tags: ghcr.io/geo-metrics-project/ory-frontend:latest
+        build-args: |
+          NEXT_PUBLIC_ORY_KRATOS_PUBLIC_URL=https://kratos.combaldieu.fr
