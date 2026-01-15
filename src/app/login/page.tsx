@@ -55,7 +55,9 @@ function LoginForm() {
         },
       })
 
-      router.push('/')
+      // Use return_to from the flow object (set by Oathkeeper via Kratos)
+      const returnTo = flow?.return_to || 'https://geometrics.combaldieu.fr'
+      window.location.href = returnTo
     } catch (err: any) {
       const data = err?.response?.data
       if (data?.ui) setFlow(data)
