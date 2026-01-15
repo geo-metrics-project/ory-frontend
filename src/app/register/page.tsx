@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ory } from '@/lib/ory'
 
@@ -8,7 +8,7 @@ type Flow = any
 
 export const dynamic = 'force-dynamic'
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter()
   const params = useSearchParams()
   const [flow, setFlow] = useState<Flow>(null)
@@ -191,5 +191,13 @@ export default function RegisterPage() {
         </div>
       </div>
     </main>
+  )
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <RegisterForm />
+    </Suspense>
   )
 }
