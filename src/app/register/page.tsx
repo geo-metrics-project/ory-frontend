@@ -31,7 +31,14 @@ function RegisterForm() {
     ory
       .createBrowserRegistrationFlow()
       .then(({ data }) => setFlow(data))
-      .catch(() => setError('Impossible d\'initialiser l\'inscription.'))
+      .catch((err) => {
+        // If user is already logged in, redirect to geometrics
+        if (err?.response?.status === 400 || err?.response?.data?.error?.id === 'session_already_available') {
+          window.location.href = 'https://geometrics.combaldieu.fr'
+        } else {
+          setError('Impossible d\'initialiser l\'inscription.')
+        }
+      })
   }, [flowId])
 
   const csrfToken = useMemo(() => {
