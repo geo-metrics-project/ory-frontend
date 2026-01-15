@@ -6,6 +6,8 @@ import { ory } from '@/lib/ory'
 
 type Flow = any
 
+export const dynamic = 'force-dynamic'
+
 export default function LoginPage() {
   const router = useRouter()
   const params = useSearchParams()
