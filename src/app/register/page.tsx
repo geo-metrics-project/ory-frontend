@@ -14,17 +14,17 @@ function RegisterForm() {
   const [flow, setFlow] = useState<Flow>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [errors, setErrors] = useState<string[]>([])
   const flowId = params.get('flow')
 
   useEffect(() => {
-    setError(null)
+    setErrors([])
 
     if (flowId) {
       ory
         .getRegistrationFlow({ id: flowId })
         .then(({ data }) => setFlow(data))
-        .catch(() => setError('Impossible de charger le flow d\'inscription.'))
+        .catch(() => setErrors(['Impossible de charger le flow d\'inscription.']))
       return
     }
 
@@ -36,7 +36,7 @@ function RegisterForm() {
         if (err?.response?.status === 400 || err?.response?.data?.error?.id === 'session_already_available') {
           window.location.href = 'https://geometrics.combaldieu.fr'
         } else {
-          setError('Impossible d\'initialiser l\'inscription.')
+          setErrors(['Impossible d\'initialiser l\'inscription.'])
         }
       })
   }, [flowId])
@@ -49,7 +49,7 @@ function RegisterForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!flow) return
-    setError(null)
+    setErrors([])
 
     try {
       await ory.updateRegistrationFlow({
@@ -67,11 +67,40 @@ function RegisterForm() {
       const data = err?.response?.data
       if (data?.ui) setFlow(data)
 
-      const msg =
-        data?.ui?.messages?.[0]?.text ||
-        err?.response?.data?.error?.message ||
-        'Inscription impossible.'
-      setError(msg)
+      // Extract all error messages from Ory flow
+      const errorMessages: string[] = []
+      
+      // Global UI messages
+      if (data?.ui?.messages) {
+        data.ui.messages.forEach((msg: any) => {
+          if (msg.type === 'error') {
+            errorMessages.push(msg.text)
+          }
+        })
+      }
+      
+      // Field-specific errors from nodes
+      if (data?.ui?.nodes) {
+        data.ui.nodes.forEach((node: any) => {
+          if (node.messages) {
+            node.messages.forEach((msg: any) => {
+              if (msg.type === 'error') {
+                const fieldName = node.attributes?.name || 'champ'
+                errorMessages.push(`${fieldName}: ${msg.text}`)
+              }
+            })
+          }
+        })
+      }
+      
+      // Fallback error
+      if (errorMessages.length === 0) {
+        errorMessages.push(
+          err?.response?.data?.error?.message || 'Inscription impossible.'
+        )
+      }
+      
+      setErrors(errorMessages)
     }
   }
 
@@ -91,13 +120,23 @@ function RegisterForm() {
           <p className="mt-2 text-teal-700 opacity-80">Rejoignez notre communauté</p>
         </div>
 
-        {error && (
+        {errors.length > 0 && (
           <div className="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700 shadow-sm">
-            <div className="flex items-center">
-              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
-              {error}
+              <div className="flex-1">
+                {errors.length === 1 ? (
+                  <p>{errors[0]}</p>
+                ) : (
+                  <ul className="list-disc list-inside space-y-1">
+                    {errors.map((err, idx) => (
+                      <li key={idx}>{err}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           </div>
         )}
