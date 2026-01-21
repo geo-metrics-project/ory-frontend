@@ -13,14 +13,9 @@ function RecoveryForm() {
   const params = useSearchParams()
   const [flow, setFlow] = useState<Flow>(null)
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const flowId = params.get('flow')
-  const code = params.get('code')
-
-  const isPasswordReset = !!code
 
   useEffect(() => {
     setError(null)
@@ -52,37 +47,15 @@ function RecoveryForm() {
     setError(null)
 
     try {
-      if (isPasswordReset) {
-        if (password !== confirmPassword) {
-          setError('Les mots de passe ne correspondent pas.')
-          return
-        }
-        const response = await ory.updateRecoveryFlow({
-          flow: flow.id,
-          updateRecoveryFlowBody: {
-            method: 'code',
-            code,
-            password,
-            csrf_token: csrfToken,
-          } as any,
-        })
-        // Let Ory handle the redirect after successful password reset
-        if ((response.data as any)?.redirect_browser_to) {
-          window.location.href = (response.data as any).redirect_browser_to
-        } else {
-          window.location.href = 'https://geometrics.combaldieu.fr'
-        }
-      } else {
-        await ory.updateRecoveryFlow({
-          flow: flow.id,
-          updateRecoveryFlowBody: {
-            method: 'link',
-            email,
-            csrf_token: csrfToken,
-          },
-        })
-        setSuccess(true)
-      }
+      await ory.updateRecoveryFlow({
+        flow: flow.id,
+        updateRecoveryFlowBody: {
+          method: 'link',
+          email,
+          csrf_token: csrfToken,
+        },
+      })
+      setSuccess(true)
     } catch (err: any) {
       const data = err?.response?.data
       if (data?.ui) setFlow(data)
@@ -137,10 +110,10 @@ function RecoveryForm() {
             </svg>
           </div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-600 to-yellow-500 bg-clip-text text-transparent">
-            {isPasswordReset ? 'Nouveau mot de passe' : 'Récupération'}
+            Récupération
           </h1>
           <p className="mt-2 text-teal-700 opacity-80">
-            {isPasswordReset ? 'Définissez votre nouveau mot de passe' : 'Réinitialisez votre mot de passe'}
+            Réinitialisez votre mot de passe
           </p>
         </div>
 
@@ -158,80 +131,36 @@ function RecoveryForm() {
         <form onSubmit={handleSubmit} className="space-y-6">
           {csrfToken && <input type="hidden" name="csrf_token" value={csrfToken} readOnly />}
 
-          {!isPasswordReset && (
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-teal-700">Adresse email</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <svg className="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <input
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-teal-100 bg-teal-50 focus:border-teal-400 focus:ring-2 focus:ring-teal-200 focus:ring-opacity-50 focus:outline-none transition-all duration-200 text-teal-800 placeholder-teal-400"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="email@exemple.com"
-                  required
-                />
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-teal-700">Adresse email</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
               </div>
-              <p className="text-xs text-teal-600 opacity-70">
-                Entrez l'adresse email associée à votre compte.
-              </p>
+              <input
+                className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-teal-100 bg-teal-50 focus:border-teal-400 focus:ring-2 focus:ring-teal-200 focus:ring-opacity-50 focus:outline-none transition-all duration-200 text-teal-800 placeholder-teal-400"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="email@exemple.com"
+                required
+              />
             </div>
-          )}
-
-          {isPasswordReset && (
-            <>
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-teal-700">Nouveau mot de passe</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                  </div>
-                  <input
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-teal-100 bg-teal-50 focus:border-teal-400 focus:ring-2 focus:ring-teal-200 focus:ring-opacity-50 focus:outline-none transition-all duration-200 text-teal-800 placeholder-teal-400"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-teal-700">Confirmer le mot de passe</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                  </div>
-                  <input
-                    className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-teal-100 bg-teal-50 focus:border-teal-400 focus:ring-2 focus:ring-teal-200 focus:ring-opacity-50 focus:outline-none transition-all duration-200 text-teal-800 placeholder-teal-400"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                  />
-                </div>
-              </div>
-            </>
-          )}
+            <p className="text-xs text-teal-600 opacity-70">
+              Entrez l'adresse email associée à votre compte.
+            </p>
+          </div>
 
           <button
             type="submit"
             className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50"
           >
             <span className="flex items-center justify-center">
-              {isPasswordReset ? 'Réinitialiser le mot de passe' : 'Envoyer le lien de récupération'}
+              Envoyer le lien de récupération
               <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={isPasswordReset ? "M5 13l4 4L19 7" : "M12 19l9 2-9-18-9 18 9-2zm0 0v-8"} />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
             </span>
           </button>
