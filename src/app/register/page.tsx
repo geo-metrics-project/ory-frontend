@@ -3,216 +3,170 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ory } from '@/lib/ory'
+import type { UpdateRegistrationFlowBody, RegistrationFlow } from '@ory/client' 
 
-type Flow = any
-type UiNode = any
+// --- Types ---
+// Use the SDK's RegistrationFlow type to stay compatible with @ory/client
+type Flow = RegistrationFlow
 
+// --- Component ---
 export const dynamic = 'force-dynamic'
 
 function RegisterForm() {
   const router = useRouter()
   const params = useSearchParams()
-  const [flow, setFlow] = useState<Flow>(null)
-  const [errors, setErrors] = useState<string[]>([])
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
   const flowId = params.get('flow')
 
+  const [flow, setFlow] = useState<Flow | null>(null)
+  const [errors, setErrors] = useState<string[]>([])
+  const [info, setInfo] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // --- Load or create registration flow ---
   useEffect(() => {
     setErrors([])
+    setInfo(null)
     setIsLoading(true)
 
-    if (flowId) {
-      ory
-        .getRegistrationFlow({ id: flowId })
-        .then(({ data }) => {
-          setFlow(data)
-          setIsLoading(false)
-        })
-        .catch(() => {
-          setErrors(['Impossible de charger le flow d\'inscription.'])
-          setIsLoading(false)
-        })
-      return
-    }
-
-    ory
-      .createBrowserRegistrationFlow()
-      .then(({ data }) => {
+    const loadFlow = async () => {
+      try {
+        const { data } = flowId
+          ? await ory.getRegistrationFlow({ id: flowId })
+          : await ory.createBrowserRegistrationFlow()
         setFlow(data)
-        setIsLoading(false)
-      })
-      .catch((err) => {
-        // If user is already logged in, redirect to geometrics
+      } catch (err: any) {
         if (err?.response?.status === 400 || err?.response?.data?.error?.id === 'session_already_available') {
           window.location.href = 'https://geometrics.combaldieu.fr'
-        } else {
-          setErrors(['Impossible d\'initialiser l\'inscription.'])
-          setIsLoading(false)
+          return
         }
-      })
+        setErrors(['Impossible de charger le flow d’inscription.'])
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadFlow()
   }, [flowId])
 
+  // --- Handle form submit ---
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!flow || isSubmitting) return
-    
+
     setErrors([])
+    setInfo(null)
     setIsSubmitting(true)
 
-    const formData = new FormData(e.currentTarget)
-    const values: any = {}
-    
-    formData.forEach((value, key) => {
-      values[key] = value
-    })
-
-    // Ensure method is set for password registration
-    if (!values.method) {
-      values.method = 'password'
-    }
-
     try {
-      await ory.updateRegistrationFlow({
+      // Collect form data
+      const formData = new FormData(e.currentTarget)
+      const rawValues: Record<string, FormDataEntryValue> = {}
+      formData.forEach((v, k) => { rawValues[k] = v })
+
+      // Normalize to strings
+      const values: Record<string, string> = {}
+      Object.entries(rawValues).forEach(([k, v]) => { values[k] = typeof v === 'string' ? v : '' })
+
+      // Ensure method is set
+      if (!values.method) values.method = 'password'
+
+      // Cast to SDK expected type (discriminated union)
+      const body = values as unknown as UpdateRegistrationFlowBody
+
+      const { data } = await ory.updateRegistrationFlow({
         flow: flow.id,
-        updateRegistrationFlowBody: values,
+        updateRegistrationFlowBody: body,
       })
-      // Success - Ory will handle redirect or show verification
-      window.location.href = 'https://geometrics.combaldieu.fr'
+
+      // Only update the flow state when the response contains a UI (some responses are success objects)
+      if ((data as any)?.ui) setFlow(data as unknown as RegistrationFlow)
+
+      // --- Detect pending verification ---
+      const requiresVerification =
+        (data as any).state === 'pending_verification' ||
+        (data as any).ui?.messages?.some((msg: any) => msg.type === 'info')
+
+      if (requiresVerification) {
+        setInfo('Inscription réussie ! Veuillez vérifier votre email pour activer votre compte.')
+      } else {
+        // Registration complete, redirect
+        window.location.href = 'https://geometrics.combaldieu.fr'
+      }
     } catch (err: any) {
       const data = err?.response?.data
-      if (data?.ui) setFlow(data)
+      if (data?.ui) setFlow(data as unknown as RegistrationFlow)
 
-      // Extract all error messages from Ory flow
       const errorMessages: string[] = []
-      
-      // Global UI messages
-      if (data?.ui?.messages) {
-        data.ui.messages.forEach((msg: any) => {
+
+      // Global errors
+      data?.ui?.messages?.forEach((msg: any) => {
+        if (msg.type === 'error') errorMessages.push(msg.text)
+      })
+
+      // Field-level node errors
+      data?.ui?.nodes?.forEach((node: any) => {
+        node.messages?.forEach((msg: any) => {
           if (msg.type === 'error') {
-            errorMessages.push(msg.text)
+            const fieldName = node.attributes?.name || 'champ'
+            errorMessages.push(`${fieldName}: ${msg.text}`)
           }
         })
-      }
-      
-      // Field-specific errors from nodes
-      if (data?.ui?.nodes) {
-        data.ui.nodes.forEach((node: any) => {
-          if (node.messages) {
-            node.messages.forEach((msg: any) => {
-              if (msg.type === 'error') {
-                const fieldName = node.attributes?.name || 'champ'
-                errorMessages.push(`${fieldName}: ${msg.text}`)
-              }
-            })
-          }
-        })
-      }
-      
-      // Fallback error
+      })
+
       if (errorMessages.length === 0) {
-        errorMessages.push(
-          err?.response?.data?.error?.message || 'Inscription impossible.'
-        )
+        errorMessages.push(err?.response?.data?.error?.message || 'Inscription impossible.')
       }
-      
+
       setErrors(errorMessages)
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const renderNode = (node: UiNode) => {
-    const attrs = node.attributes
-    const nodeType = attrs.node_type
+  // --- Render input nodes dynamically ---
+  const renderNode = (node: any) => {
+    const attrs = node?.attributes || {}
+    if (!node) return null
 
-    // Skip non-input nodes
-    if (nodeType === 'script' || nodeType === 'text') return null
+    const type = attrs.type || 'text'
+    const isPassword = type === 'password' || (attrs.name && attrs.name.toLowerCase().includes('password'))
+    const inputType = isPassword ? 'password' : type
+    const hasError = node.messages?.some((m: any) => m.type === 'error')
+    const label = node.meta?.label?.text || attrs.name || ''
 
-    // Hidden inputs (CSRF tokens, methods, etc.)
-    if (attrs.type === 'hidden') {
-      return <input key={attrs.name} type="hidden" name={attrs.name} value={attrs.value || ''} />
-    }
-
-    // Submit button
-    if (attrs.type === 'submit' || nodeType === 'button') {
+    if (attrs.node_type === 'script' || attrs.node_type === 'text') return null
+    if (attrs.type === 'hidden') return <input key={attrs.name || 'hidden'} type="hidden" name={attrs.name} value={attrs.value || ''} />
+    if (attrs.type === 'submit' || attrs.node_type === 'button') {
       return (
         <button
-          key={attrs.name}
+          key={attrs.name || 'submit'}
           type="submit"
           name={attrs.name}
           value={attrs.value || ''}
           disabled={isSubmitting}
-          className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+          className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span className="flex items-center justify-center">
-            {isSubmitting ? (
-              <>
-                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Création en cours...
-              </>
-            ) : (
-              <>
-                {node.meta?.label?.text || 'Créer mon compte'}
-                <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                </svg>
-              </>
-            )}
-          </span>
+          {isSubmitting ? 'Création en cours...' : node.meta?.label?.text || 'Créer mon compte'}
         </button>
       )
     }
 
-    // Determine input type
-    const isPassword = attrs.type === 'password' || attrs.name.toLowerCase().includes('password') || attrs.name === 'traits.password'
-    const inputType = isPassword ? 'password' : attrs.type || 'text'
-    const isEmail = attrs.name === 'traits.email' || attrs.type === 'email'
-    const hasError = node.messages && node.messages.some((m: any) => m.type === 'error')
-    const label = node.meta?.label?.text || attrs.name
-
-    // Icon for email/password
-    const getIcon = () => {
-      if (isEmail) {
-        return (
-          <svg className="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-        )
-      }
-      if (isPassword) {
-        return (
-          <svg className="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-          </svg>
-        )
-      }
-      return null
-    }
-
-    const icon = getIcon()
-
     return (
-      <div key={attrs.name} className="space-y-2">
+      <div key={attrs.name || JSON.stringify(node)} className="space-y-2">
         <label className="text-sm font-semibold text-teal-700">{label}</label>
-        <div className="relative">
-          {icon && <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">{icon}</div>}
-          <input
-            type={inputType}
-            name={attrs.name}
-            defaultValue={attrs.value || ''}
-            required={attrs.required}
-            disabled={attrs.disabled || isSubmitting}
-            placeholder={attrs.placeholder || ''}
-            autoComplete={attrs.autocomplete}
-            className={`w-full ${icon ? 'pl-10' : 'pl-4'} pr-4 py-3 rounded-xl border-2 ${
-              hasError ? 'border-red-300 bg-red-50' : 'border-teal-100 bg-teal-50'
-            } focus:border-teal-400 focus:ring-2 focus:ring-teal-200 focus:ring-opacity-50 focus:outline-none transition-all duration-200 text-teal-800 placeholder-teal-400 disabled:opacity-50 disabled:cursor-not-allowed`}
-          />
-        </div>
+        <input
+          type={inputType}
+          name={attrs.name}
+          defaultValue={attrs.value || ''}
+          required={attrs.required}
+          disabled={attrs.disabled || isSubmitting}
+          placeholder={attrs.placeholder || ''}
+          autoComplete={attrs.autocomplete}
+          className={`w-full px-4 py-3 rounded-xl border-2 ${
+            hasError ? 'border-red-300 bg-red-50' : 'border-teal-100 bg-teal-50'
+          } focus:border-teal-400 focus:ring-2 focus:ring-teal-200 focus:ring-opacity-50 focus:outline-none transition-all duration-200`}
+        />
         {node.messages?.map((msg: any, idx: number) => (
           <p key={idx} className={`text-xs ${msg.type === 'error' ? 'text-red-600' : 'text-teal-600'} opacity-70`}>
             {msg.text}
@@ -222,87 +176,28 @@ function RegisterForm() {
     )
   }
 
-
   if (isLoading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 via-yellow-50 to-teal-100 p-6">
-        <div className="flex flex-col items-center">
-          <svg className="animate-spin h-12 w-12 text-teal-600 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <p className="text-teal-700 font-medium">Chargement...</p>
-        </div>
-      </main>
-    )
+    return <div className="min-h-screen flex items-center justify-center">Chargement...</div>
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 via-yellow-50 to-teal-100 p-6">
+    <main className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl border border-yellow-200">
-        {/* En-tête avec logo/icône */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-teal-400 flex items-center justify-center mb-4 shadow-lg">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-            </svg>
+        {info && (
+          <div className="mb-6 rounded-xl border border-teal-400 bg-teal-50 p-4 text-sm text-teal-700 shadow-sm">
+            {info}
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-500 to-teal-600 bg-clip-text text-transparent">
-            Inscription
-          </h1>
-          <p className="mt-2 text-teal-700 opacity-80">Rejoignez notre communauté</p>
-        </div>
+        )}
 
         {errors.length > 0 && (
           <div className="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-700 shadow-sm">
-            <div className="flex items-start">
-              <svg className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-              <div className="flex-1">
-                {errors.length === 1 ? (
-                  <p>{errors[0]}</p>
-                ) : (
-                  <ul className="list-disc list-inside space-y-1">
-                    {errors.map((err, idx) => (
-                      <li key={idx}>{err}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
+            {errors.map((err, idx) => <p key={idx}>{err}</p>)}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6" action={flow?.ui.action} method={flow?.ui.method}>
-          {flow?.ui.nodes.map((node: UiNode) => renderNode(node))}
+          {flow?.ui.nodes?.map((n: any) => renderNode(n))}
         </form>
-
-        <div className="mt-8 pt-6 border-t border-yellow-100">
-          <div className="flex items-center justify-center mb-4">
-            <div className="h-px flex-grow bg-gradient-to-r from-transparent via-yellow-300 to-transparent"></div>
-            <span className="px-4 text-sm text-teal-600">Déjà membre ?</span>
-            <div className="h-px flex-grow bg-gradient-to-r from-transparent via-yellow-300 to-transparent"></div>
-          </div>
-          
-          <a
-            href="/login"
-            className="block w-full py-3 px-4 rounded-xl border-2 border-teal-400 bg-gradient-to-r from-teal-50 to-teal-100 hover:from-teal-100 hover:to-teal-200 text-teal-700 font-semibold text-center shadow-sm hover:shadow-md transition-all duration-200 hover:border-teal-500"
-          >
-            <span className="flex items-center justify-center">
-              Se connecter
-              <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-              </svg>
-            </span>
-          </a>
-        </div>
-
-        <div className="mt-8 text-center">
-          <p className="text-xs text-teal-500 opacity-70">
-            Votre sécurité est notre priorité. Toutes les données sont cryptées.
-          </p>
-        </div>
       </div>
     </main>
   )
@@ -310,17 +205,7 @@ function RegisterForm() {
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 via-yellow-50 to-teal-100">
-        <div className="flex flex-col items-center">
-          <svg className="animate-spin h-12 w-12 text-teal-600 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          <p className="text-teal-700 font-medium">Chargement...</p>
-        </div>
-      </div>
-    }>
+    <Suspense fallback={<div>Chargement...</div>}>
       <RegisterForm />
     </Suspense>
   )
