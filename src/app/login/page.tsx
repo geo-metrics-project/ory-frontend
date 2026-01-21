@@ -68,6 +68,11 @@ function LoginForm() {
       values[key] = value
     })
 
+    // Ensure method is set for password login
+    if (!values.method) {
+      values.method = 'password'
+    }
+
     try {
       await ory.updateLoginFlow({
         flow: flow.id,
@@ -129,13 +134,13 @@ function LoginForm() {
       return null
     }
 
-    // Handle hidden inputs (like CSRF token)
-    if (attrs.type === 'hidden') {
-      return <input key={attrs.name} type="hidden" name={attrs.name} value={attrs.value || ''} />
+    // Handle all input types including hidden ones
+    if (attrs.type === 'hidden' || attrs.name === 'method' || nodeType === 'input') {
+      return <input key={attrs.name} type={attrs.type || 'text'} name={attrs.name} value={attrs.value || (attrs.name === 'method' ? 'password' : '')} />
     }
 
     // Handle submit button
-    if (attrs.type === 'submit') {
+    if (attrs.type === 'submit' || nodeType === 'button') {
       return (
         <button
           key={attrs.name}

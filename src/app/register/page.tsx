@@ -67,6 +67,11 @@ function RegisterForm() {
       values[key] = value
     })
 
+    // Ensure method is set for password registration
+    if (!values.method) {
+      values.method = 'password'
+    }
+
     try {
       await ory.updateRegistrationFlow({
         flow: flow.id,
@@ -126,9 +131,9 @@ function RegisterForm() {
       return null
     }
 
-    // Handle hidden inputs (like CSRF token)
-    if (attrs.type === 'hidden') {
-      return <input key={attrs.name} type="hidden" name={attrs.name} value={attrs.value || ''} />
+    // Handle hidden inputs (like CSRF token and method)
+    if (attrs.type === 'hidden' || attrs.name === 'method') {
+      return <input key={attrs.name} type="hidden" name={attrs.name} value={attrs.value || (attrs.name === 'method' ? 'password' : '')} />
     }
 
     // Handle submit button

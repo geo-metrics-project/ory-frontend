@@ -138,6 +138,11 @@ function VerificationForm() {
       values[key] = value
     })
 
+    // Ensure method is set for verification
+    if (!values.method) {
+      values.method = 'link' // or 'code' depending on the flow
+    }
+
     try {
       await ory.updateVerificationFlow({
         flow: flow.id,
@@ -197,9 +202,9 @@ function VerificationForm() {
       return null
     }
 
-    // Handle hidden inputs (like CSRF token)
-    if (attrs.type === 'hidden') {
-      return <input key={attrs.name} type="hidden" name={attrs.name} value={attrs.value || ''} />
+    // Handle hidden inputs (like CSRF token and method)
+    if (attrs.type === 'hidden' || attrs.name === 'method') {
+      return <input key={attrs.name} type="hidden" name={attrs.name} value={attrs.value || (attrs.name === 'method' ? 'link' : '')} />
     }
 
     // Handle submit button
