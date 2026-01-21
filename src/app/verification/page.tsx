@@ -24,7 +24,14 @@ function VerificationForm() {
     if (flowId) {
       ory
         .getVerificationFlow({ id: flowId })
-        .then(({ data }) => setFlow(data))
+        .then(({ data }) => {
+          setFlow(data)
+          // Extract email from flow if it exists (e.g., from registration redirect)
+          const emailNode = data?.ui?.nodes?.find((n: any) => n.attributes?.name === 'email')
+          if (emailNode?.attributes && 'value' in emailNode.attributes && emailNode.attributes.value) {
+            setEmail(emailNode.attributes.value as string)
+          }
+        })
         .catch(() => setError('Impossible de charger le flow de vérification.'))
       return
     }
@@ -115,6 +122,10 @@ function VerificationForm() {
     )
   }
 
+  // If email is pre-filled from flow (e.g., from registration) and no code, show info message
+  const emailNode = flow?.ui?.nodes?.find((n: any) => n.attributes?.name === 'email')
+  const emailFromFlow = emailNode?.attributes && 'value' in emailNode.attributes ? emailNode.attributes.value as string : undefined
+
   return (
     <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 via-yellow-50 to-teal-100 p-6">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl border border-teal-200">
@@ -141,10 +152,24 @@ function VerificationForm() {
           </div>
         )}
 
+        {!code && emailFromFlow && (
+          <div className="mb-6 rounded-xl border border-blue-300 bg-blue-50 p-4 text-sm text-blue-700 shadow-sm">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <div>
+                <p className="font-semibold mb-1">Vérifiez votre email</p>
+                <p>Un email de vérification sera envoyé à <strong>{emailFromFlow}</strong>. Cliquez sur le lien dans l'email pour activer votre compte.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
           {csrfToken && <input type="hidden" name="csrf_token" value={csrfToken} readOnly />}
 
-          {!code && (
+          {!code && !emailFromFlow && (
             <div className="space-y-2">
               <label className="text-sm font-semibold text-teal-700">Adresse email</label>
               <div className="relative">
@@ -165,9 +190,22 @@ function VerificationForm() {
             type="submit"
             className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
           >
-            {code ? 'Valider la vérification' : 'Envoyer le lien de vérification'}
+            {code ? 'Valider la vérification' : emailFromFlow ? 'Envoyer le lien de vérification' : 'Envoyer le lien de vérification'}
           </button>
         </form>
+
+        {!code && (
+          <div className="mt-8 pt-6 border-t border-teal-100">
+            <div className="text-center">
+              <a
+                href="/login"
+                className="text-sm text-teal-600 hover:text-teal-800 hover:underline transition-colors"
+              >
+                Retour à la connexion
+              </a>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   )
