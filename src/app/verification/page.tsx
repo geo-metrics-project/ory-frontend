@@ -12,9 +12,8 @@ function VerificationForm() {
   const router = useRouter()
   const params = useSearchParams()
   const [flow, setFlow] = useState<Flow | null>(null)
-  const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+  const [verifying, setVerifying] = useState(false)
   const flowId = params.get('flow')
   const code = params.get('code')
 
@@ -24,89 +23,98 @@ function VerificationForm() {
     if (flowId) {
       ory
         .getVerificationFlow({ id: flowId })
-        .then(({ data }) => {
-          setFlow(data)
-          // Extract email from flow if it exists (e.g., from registration redirect)
-          const emailNode = data?.ui?.nodes?.find((n: any) => n.attributes?.name === 'email')
-          if (emailNode?.attributes && 'value' in emailNode.attributes && emailNode.attributes.value) {
-            setEmail(emailNode.attributes.value as string)
-          }
-        })
+        .then(({ data }) => setFlow(data))
         .catch(() => setError('Impossible de charger le flow de vérification.'))
       return
     }
 
-    ory
-      .createBrowserVerificationFlow()
-      .then(({ data }) => setFlow(data))
-      .catch(() => setError('Impossible d\'initialiser la vérification.'))
-  }, [flowId])
+    // If no flow, redirect to login
+    if (!code) {
+      router.push('/login')
+    }
+  }, [flowId, code, router])
 
   const csrfToken = useMemo(() => {
     const node = flow?.ui?.nodes?.find((n: any) => n.attributes?.name === 'csrf_token')
     return node?.attributes?.value
   }, [flow])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!flow) return
-    setError(null)
+  // Auto-verify when code is present
+  useEffect(() => {
+    if (code && flow && csrfToken && !verifying) {
+      setVerifying(true)
+      setError(null)
 
-    try {
-      if (code) {
-        const response = await ory.updateVerificationFlow({
-          flow: flow.id,
-          updateVerificationFlowBody: {
-            method: 'code',
-            code,
-            csrf_token: csrfToken,
-          } as any,
-        })
-
+      ory.updateVerificationFlow({
+        flow: flow.id,
+        updateVerificationFlowBody: {
+          method: 'code',
+          code,
+          csrf_token: csrfToken,
+        } as any,
+      })
+      .then((response) => {
         if ((response.data as any)?.redirect_browser_to) {
           window.location.href = (response.data as any).redirect_browser_to
         } else {
           window.location.href = 'https://geometrics.combaldieu.fr'
         }
-      } else {
-        await ory.updateVerificationFlow({
-          flow: flow.id,
-          updateVerificationFlowBody: {
-            method: 'link',
-            identity: { traits: { email } },
-            csrf_token: csrfToken,
-          } as any,
-        })
-        setSuccess(true)
-      }
-    } catch (err: any) {
-      const data = err?.response?.data
-      if (data?.ui) setFlow(data)
+      })
+      .catch((err: any) => {
+        setVerifying(false)
+        const data = err?.response?.data
+        if (data?.ui) setFlow(data)
 
-      const msg =
-        data?.ui?.messages?.[0]?.text ||
-        err?.response?.data?.error?.message ||
-        'Erreur lors de la vérification.'
-      setError(msg)
+        const msg =
+          data?.ui?.messages?.[0]?.text ||
+          err?.response?.data?.error?.message ||
+          'Erreur lors de la vérification.'
+        setError(msg)
+      })
     }
-  }
+  }, [code, flow, csrfToken, verifying])
 
-  if (success) {
+  // Extract email from flow if it exists (for display only)
+  const emailNode = flow?.ui?.nodes?.find((n: any) => n.attributes?.name === 'email')
+  const emailFromFlow = emailNode?.attributes && 'value' in emailNode.attributes ? emailNode.attributes.value as string : undefined
+
+  // If redirected from registration (flow but no code), show "check your email" message
+  if (flow && !code) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 via-yellow-50 to-teal-100 p-6">
         <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl border border-teal-200">
           <div className="flex flex-col items-center mb-8">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-400 to-teal-400 flex items-center justify-center mb-4 shadow-lg">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-teal-400 flex items-center justify-center mb-4 shadow-lg">
               <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
             </div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-600 to-green-500 bg-clip-text text-transparent">
-              Email envoyé
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-600 to-blue-500 bg-clip-text text-transparent">
+              Vérifiez votre email
             </h1>
             <p className="mt-2 text-teal-700 opacity-80 text-center">
-              Si un compte existe avec cette adresse email, vous recevrez un lien de vérification.
+              Un email de vérification a été envoyé{emailFromFlow ? ` à ${emailFromFlow}` : ''}
             </p>
+          </div>
+
+          <div className="rounded-xl border border-blue-300 bg-blue-50 p-4 text-sm text-blue-700 shadow-sm mb-6">
+            <div className="flex items-start">
+              <svg className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <div>
+                <p className="font-semibold mb-1">Étapes suivantes</p>
+                <ol className="list-decimal list-inside space-y-1 mt-2">
+                  <li>Consultez votre boîte de réception</li>
+                  <li>Cliquez sur le lien dans l'email</li>
+                  <li>Vous serez automatiquement connecté</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-center text-sm text-teal-600 mb-4">
+            Vous n'avez pas reçu l'email ? Vérifiez vos spams ou contactez le support.
           </div>
 
           <div className="text-center">
@@ -122,23 +130,28 @@ function VerificationForm() {
     )
   }
 
-  // If email is pre-filled from flow (e.g., from registration) and no code, show info message
-  const emailNode = flow?.ui?.nodes?.find((n: any) => n.attributes?.name === 'email')
-  const emailFromFlow = emailNode?.attributes && 'value' in emailNode.attributes ? emailNode.attributes.value as string : undefined
-
+  // If verifying with code
   return (
     <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 via-yellow-50 to-teal-100 p-6">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl border border-teal-200">
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 rounded-full bg-gradient-to-br from-teal-400 to-yellow-400 flex items-center justify-center mb-4 shadow-lg">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
-            </svg>
+            {verifying && !error ? (
+              <svg className="w-8 h-8 text-white animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            ) : (
+              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
           </div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-600 to-yellow-500 bg-clip-text text-transparent">
-            Vérification
+            {verifying && !error ? 'Vérification en cours...' : error ? 'Erreur' : 'Vérification'}
           </h1>
-          <p className="mt-2 text-teal-700 opacity-80">Vérifiez votre adresse email</p>
+          <p className="mt-2 text-teal-700 opacity-80 text-center">
+            {verifying && !error ? 'Veuillez patienter' : error ? 'Une erreur est survenue' : 'Vérification de votre email'}
+          </p>
         </div>
 
         {error && (
@@ -152,58 +165,14 @@ function VerificationForm() {
           </div>
         )}
 
-        {!code && emailFromFlow && (
-          <div className="mb-6 rounded-xl border border-blue-300 bg-blue-50 p-4 text-sm text-blue-700 shadow-sm">
-            <div className="flex items-start">
-              <svg className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-              <div>
-                <p className="font-semibold mb-1">Vérifiez votre email</p>
-                <p>Un email de vérification sera envoyé à <strong>{emailFromFlow}</strong>. Cliquez sur le lien dans l'email pour activer votre compte.</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {csrfToken && <input type="hidden" name="csrf_token" value={csrfToken} readOnly />}
-
-          {!code && !emailFromFlow && (
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-teal-700">Adresse email</label>
-              <div className="relative">
-                <input
-                  className="w-full pl-3 pr-4 py-3 rounded-xl border-2 border-teal-100 bg-teal-50 focus:border-teal-400 focus:ring-2 focus:ring-teal-200 focus:ring-opacity-50 focus:outline-none transition-all duration-200 text-teal-800 placeholder-teal-400"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="email@exemple.com"
-                  required
-                />
-              </div>
-              <p className="text-xs text-teal-600 opacity-70">Vous recevrez un lien de vérification.</p>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
-          >
-            {code ? 'Valider la vérification' : emailFromFlow ? 'Envoyer le lien de vérification' : 'Envoyer le lien de vérification'}
-          </button>
-        </form>
-
-        {!code && (
-          <div className="mt-8 pt-6 border-t border-teal-100">
-            <div className="text-center">
-              <a
-                href="/login"
-                className="text-sm text-teal-600 hover:text-teal-800 hover:underline transition-colors"
-              >
-                Retour à la connexion
-              </a>
-            </div>
+        {error && (
+          <div className="text-center">
+            <a
+              href="/login"
+              className="text-sm text-teal-600 hover:text-teal-800 hover:underline transition-colors"
+            >
+              Retour à la connexion
+            </a>
           </div>
         )}
       </div>
