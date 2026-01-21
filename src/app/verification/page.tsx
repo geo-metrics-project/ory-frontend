@@ -28,11 +28,14 @@ function VerificationForm() {
       return
     }
 
-    // If no flow, redirect to login
+    // Create a new flow if no flowId provided
     if (!code) {
-      router.push('/login')
+      ory
+        .createBrowserVerificationFlow()
+        .then(({ data }) => setFlow(data))
+        .catch(() => setError('Impossible d\'initialiser la vérification.'))
     }
-  }, [flowId, code, router])
+  }, [flowId, code])
 
   const csrfToken = useMemo(() => {
     const node = flow?.ui?.nodes?.find((n: any) => n.attributes?.name === 'csrf_token')
