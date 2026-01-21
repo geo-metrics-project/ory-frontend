@@ -134,9 +134,16 @@ function LoginForm() {
       return null
     }
 
-    // Handle all input types including hidden ones
-    if (attrs.type === 'hidden' || attrs.name === 'method' || nodeType === 'input') {
-      return <input key={attrs.name} type={attrs.type || 'text'} name={attrs.name} value={attrs.value || (attrs.name === 'method' ? 'password' : '')} />
+    // Render hidden inputs silently (CSRF, method, etc.)
+    if (attrs.type === 'hidden') {
+      return (
+        <input
+          key={attrs.name}
+          type="hidden"
+          name={attrs.name}
+          value={attrs.value}
+        />
+      )
     }
 
     // Handle submit button

@@ -202,9 +202,16 @@ function VerificationForm() {
       return null
     }
 
-    // Handle hidden inputs (like CSRF token and method)
-    if (attrs.type === 'hidden' || attrs.name === 'method') {
-      return <input key={attrs.name} type="hidden" name={attrs.name} value={attrs.value || (attrs.name === 'method' ? 'link' : '')} />
+    // Render hidden inputs silently (CSRF, method, etc.)
+    if (attrs.type === 'hidden') {
+    return (
+        <input
+        key={attrs.name}
+        type="hidden"
+        name={attrs.name}
+        value={attrs.value}
+        />
+    )
     }
 
     // Handle submit button
