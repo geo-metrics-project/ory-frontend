@@ -3,53 +3,58 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ory } from '@/lib/ory'
-import type { UpdateRegistrationFlowBody, RegistrationFlow } from '@ory/client' 
 
-// --- Types ---
-// Use the SDK's RegistrationFlow type to stay compatible with @ory/client
-type Flow = RegistrationFlow
+type Flow = any
+type UiNode = any
 
-// --- Component ---
 export const dynamic = 'force-dynamic'
 
 function RegisterForm() {
   const router = useRouter()
   const params = useSearchParams()
-  const flowId = params.get('flow')
-
-  const [flow, setFlow] = useState<Flow | null>(null)
+  const [flow, setFlow] = useState<Flow>(null)
   const [errors, setErrors] = useState<string[]>([])
   const [info, setInfo] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const flowId = params.get('flow')
 
-  // --- Load or create registration flow ---
   useEffect(() => {
     setErrors([])
     setInfo(null)
     setIsLoading(true)
 
-    const loadFlow = async () => {
-      try {
-        const { data } = flowId
-          ? await ory.getRegistrationFlow({ id: flowId })
-          : await ory.createBrowserRegistrationFlow()
-        setFlow(data)
-      } catch (err: any) {
-        if (err?.response?.status === 400 || err?.response?.data?.error?.id === 'session_already_available') {
-          window.location.href = 'https://geometrics.combaldieu.fr'
-          return
-        }
-        setErrors(['Impossible de charger le flow d’inscription.'])
-      } finally {
-        setIsLoading(false)
-      }
+    if (flowId) {
+      ory
+        .getRegistrationFlow({ id: flowId })
+        .then(({ data }) => {
+          setFlow(data)
+          setIsLoading(false)
+        })
+        .catch(() => {
+          setErrors(['Impossible de charger le flow d\'inscription.'])
+          setIsLoading(false)
+        })
+      return
     }
 
-    loadFlow()
+    ory
+      .createBrowserRegistrationFlow()
+      .then(({ data }) => {
+        setFlow(data)
+        setIsLoading(false)
+      })
+      .catch((err) => {
+        // User already logged in → redirect
+        if (err?.response?.status === 400 || err?.response?.data?.error?.id === 'session_already_available') {
+          window.location.href = 'https://geometrics.combaldieu.fr'
+        } else {
+          setErrors(['Impossible d\'initialiser l\'inscription.'])
+          setIsLoading(false)
+        }
+      })
   }, [flowId])
 
-  // --- Handle form submit ---
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!flow || isSubmitting) return
@@ -58,48 +63,49 @@ function RegisterForm() {
     setInfo(null)
     setIsSubmitting(true)
 
+    // Collect form data
+    const formData = new FormData(e.currentTarget)
+    const values: Record<string, string> = {}
+    formData.forEach((value, key) => {
+      values[key] = value.toString()
+    })
+
+    // Ensure method is set
+    if (!values.method) values.method = 'password'
+
     try {
-      // Collect form data
-      const formData = new FormData(e.currentTarget)
-      const rawValues: Record<string, FormDataEntryValue> = {}
-      formData.forEach((v, k) => { rawValues[k] = v })
-
-      // Normalize to strings
-      const values: Record<string, string> = {}
-      Object.entries(rawValues).forEach(([k, v]) => { values[k] = typeof v === 'string' ? v : '' })
-
-      // Ensure method is set
-      if (!values.method) values.method = 'password'
-
-      // Cast to SDK expected type (discriminated union)
-      const body = values as unknown as UpdateRegistrationFlowBody
-
       const { data } = await ory.updateRegistrationFlow({
         flow: flow.id,
-        updateRegistrationFlowBody: body,
+        updateRegistrationFlowBody: values,
       })
 
-      // Only update the flow state when the response contains a UI (some responses are success objects)
-      if ((data as any)?.ui) setFlow(data as unknown as RegistrationFlow)
-
-      // --- Detect pending verification ---
+      // Detect if verification is required
+      // Prefer checking the flow state or nodes instead of parsing text
       const requiresVerification =
-        (data as any).state === 'pending_verification' ||
-        (data as any).ui?.messages?.some((msg: any) => msg.type === 'info')
+        data.state === 'choose_verification' || data.state === 'pending_verification' ||
+        data.ui?.nodes?.some((node: any) => {
+          const name = node.attributes?.name
+          const messages = node.messages || []
+          return (
+            (name === 'traits.email' || name === 'traits.verification_code') &&
+            messages.some((msg: any) => msg.type === 'info')
+          )
+        })
 
       if (requiresVerification) {
+        setFlow(data)
         setInfo('Inscription réussie ! Veuillez vérifier votre email pour activer votre compte.')
       } else {
-        // Registration complete, redirect
+        // No verification needed → redirect
         window.location.href = 'https://geometrics.combaldieu.fr'
       }
     } catch (err: any) {
       const data = err?.response?.data
-      if (data?.ui) setFlow(data as unknown as RegistrationFlow)
+      if (data?.ui) setFlow(data)
 
       const errorMessages: string[] = []
 
-      // Global errors
+      // Global UI errors
       data?.ui?.messages?.forEach((msg: any) => {
         if (msg.type === 'error') errorMessages.push(msg.text)
       })
@@ -124,23 +130,20 @@ function RegisterForm() {
     }
   }
 
-  // --- Render input nodes dynamically ---
-  const renderNode = (node: any) => {
-    const attrs = node?.attributes || {}
-    if (!node) return null
+  const renderNode = (node: UiNode) => {
+    const attrs = node.attributes
+    const nodeType = attrs.node_type
 
-    const type = attrs.type || 'text'
-    const isPassword = type === 'password' || (attrs.name && attrs.name.toLowerCase().includes('password'))
-    const inputType = isPassword ? 'password' : type
-    const hasError = node.messages?.some((m: any) => m.type === 'error')
-    const label = node.meta?.label?.text || attrs.name || ''
+    if (nodeType === 'script' || nodeType === 'text') return null
 
-    if (attrs.node_type === 'script' || attrs.node_type === 'text') return null
-    if (attrs.type === 'hidden') return <input key={attrs.name || 'hidden'} type="hidden" name={attrs.name} value={attrs.value || ''} />
-    if (attrs.type === 'submit' || attrs.node_type === 'button') {
+    if (attrs.type === 'hidden') {
+      return <input key={attrs.name} type="hidden" name={attrs.name} value={attrs.value || ''} />
+    }
+
+    if (attrs.type === 'submit' || nodeType === 'button') {
       return (
         <button
-          key={attrs.name || 'submit'}
+          key={attrs.name}
           type="submit"
           name={attrs.name}
           value={attrs.value || ''}
@@ -152,8 +155,14 @@ function RegisterForm() {
       )
     }
 
+    const isPassword = attrs.type === 'password' || attrs.name.toLowerCase().includes('password') || attrs.name === 'traits.password'
+    const inputType = isPassword ? 'password' : attrs.type || 'text'
+    const isEmail = attrs.name === 'traits.email' || attrs.type === 'email'
+    const hasError = node.messages?.some((m: any) => m.type === 'error')
+    const label = node.meta?.label?.text || attrs.name
+
     return (
-      <div key={attrs.name || JSON.stringify(node)} className="space-y-2">
+      <div key={attrs.name} className="space-y-2">
         <label className="text-sm font-semibold text-teal-700">{label}</label>
         <input
           type={inputType}
@@ -177,7 +186,11 @@ function RegisterForm() {
   }
 
   if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center">Chargement...</div>
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        Chargement...
+      </div>
+    )
   }
 
   return (
@@ -196,7 +209,7 @@ function RegisterForm() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6" action={flow?.ui.action} method={flow?.ui.method}>
-          {flow?.ui.nodes?.map((n: any) => renderNode(n))}
+          {flow?.ui.nodes.map((node: UiNode) => renderNode(node))}
         </form>
       </div>
     </main>
