@@ -126,25 +126,16 @@ function RegisterForm() {
     const attrs = node.attributes
     const nodeType = attrs.node_type
 
-    // Skip scripts and other non-input nodes
-    if (nodeType === 'script' || nodeType === 'text') {
-      return null
-    }
+    // Skip non-input nodes
+    if (nodeType === 'script' || nodeType === 'text') return null
 
-    // Render hidden inputs silently (CSRF, method, etc.)
+    // Hidden inputs (CSRF tokens, methods, etc.)
     if (attrs.type === 'hidden') {
-      return (
-        <input
-          key={attrs.name}
-          type="hidden"
-          name={attrs.name}
-          value={attrs.value}
-        />
-      )
+      return <input key={attrs.name} type="hidden" name={attrs.name} value={attrs.value || ''} />
     }
 
-    // Handle submit button
-    if (attrs.type === 'submit') {
+    // Submit button
+    if (attrs.type === 'submit' || nodeType === 'button') {
       return (
         <button
           key={attrs.name}
@@ -176,12 +167,14 @@ function RegisterForm() {
       )
     }
 
-    // Handle input fields
-    const label = node.meta?.label?.text || attrs.name
-    const isPassword = attrs.type === 'password'
+    // Determine input type
+    const isPassword = attrs.type === 'password' || attrs.name.toLowerCase().includes('password') || attrs.name === 'traits.password'
+    const inputType = isPassword ? 'password' : attrs.type || 'text'
     const isEmail = attrs.name === 'traits.email' || attrs.type === 'email'
     const hasError = node.messages && node.messages.some((m: any) => m.type === 'error')
+    const label = node.meta?.label?.text || attrs.name
 
+    // Icon for email/password
     const getIcon = () => {
       if (isEmail) {
         return (
@@ -206,22 +199,18 @@ function RegisterForm() {
       <div key={attrs.name} className="space-y-2">
         <label className="text-sm font-semibold text-teal-700">{label}</label>
         <div className="relative">
-          {icon && (
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              {icon}
-            </div>
-          )}
+          {icon && <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">{icon}</div>}
           <input
-            className={`w-full ${icon ? 'pl-10' : 'pl-4'} pr-4 py-3 rounded-xl border-2 ${
-              hasError ? 'border-red-300 bg-red-50' : 'border-teal-100 bg-teal-50'
-            } focus:border-teal-400 focus:ring-2 focus:ring-teal-200 focus:ring-opacity-50 focus:outline-none transition-all duration-200 text-teal-800 placeholder-teal-400 disabled:opacity-50 disabled:cursor-not-allowed`}
-            type={attrs.type}
+            type={inputType}
             name={attrs.name}
             defaultValue={attrs.value || ''}
             required={attrs.required}
             disabled={attrs.disabled || isSubmitting}
             placeholder={attrs.placeholder || ''}
             autoComplete={attrs.autocomplete}
+            className={`w-full ${icon ? 'pl-10' : 'pl-4'} pr-4 py-3 rounded-xl border-2 ${
+              hasError ? 'border-red-300 bg-red-50' : 'border-teal-100 bg-teal-50'
+            } focus:border-teal-400 focus:ring-2 focus:ring-teal-200 focus:ring-opacity-50 focus:outline-none transition-all duration-200 text-teal-800 placeholder-teal-400 disabled:opacity-50 disabled:cursor-not-allowed`}
           />
         </div>
         {node.messages?.map((msg: any, idx: number) => (
@@ -232,6 +221,7 @@ function RegisterForm() {
       </div>
     )
   }
+
 
   if (isLoading) {
     return (
