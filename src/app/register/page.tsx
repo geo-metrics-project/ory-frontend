@@ -52,7 +52,7 @@ function RegisterForm() {
     setErrors([])
 
     try {
-      await ory.updateRegistrationFlow({
+      const response = await ory.updateRegistrationFlow({
         flow: flow.id,
         updateRegistrationFlowBody: {
           method: 'password',
@@ -62,7 +62,12 @@ function RegisterForm() {
         },
       })
 
-      router.push('/login')
+      // Let Ory handle the redirect (to verification or after url)
+      if ((response.data as any)?.redirect_browser_to) {
+        window.location.href = (response.data as any).redirect_browser_to
+      } else {
+        router.push('/login')
+      }
     } catch (err: any) {
       const data = err?.response?.data
       if (data?.ui) setFlow(data)

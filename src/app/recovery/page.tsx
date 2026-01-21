@@ -57,7 +57,7 @@ function RecoveryForm() {
           setError('Les mots de passe ne correspondent pas.')
           return
         }
-        await ory.updateRecoveryFlow({
+        const response = await ory.updateRecoveryFlow({
           flow: flow.id,
           updateRecoveryFlowBody: {
             method: 'code',
@@ -66,8 +66,12 @@ function RecoveryForm() {
             csrf_token: csrfToken,
           } as any,
         })
-        // Redirect to login after successful password reset
-        router.push('/login?message=Mot de passe réinitialisé avec succès')
+        // Let Ory handle the redirect after successful password reset
+        if ((response.data as any)?.redirect_browser_to) {
+          window.location.href = (response.data as any).redirect_browser_to
+        } else {
+          window.location.href = 'https://geometrics.combaldieu.fr'
+        }
       } else {
         await ory.updateRecoveryFlow({
           flow: flow.id,
