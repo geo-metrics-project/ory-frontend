@@ -1,21 +1,33 @@
-
+// src/middleware.ts
+import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
 import { createOryMiddleware } from "@ory/nextjs/middleware"
 import oryConfig from "./ory.config"
 
-// This function can be marked `async` if using `await` inside
-export const middleware = createOryMiddleware(oryConfig)
+const oryMiddleware = createOryMiddleware(oryConfig)
 
-// See "Matching Paths" below to learn more
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // 1. Handle the Root "/"
+  // Since this is an auth subdomain, "/" shouldn't really exist.
+  // We send them to Login by default.
+  if (pathname === "/") {
+    return NextResponse.redirect(new URL("/login", request.url))
+  }
+
+  // 2. Run the standard Ory security check for everything else
+  return oryMiddleware(request)
+}
+
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - auth pages (login, register, recovery, verification, settings, error)
+     * Run middleware on everything EXCEPT:
+     * - auth pages (login, registration, etc)
+     * - api routes
+     * - static files
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|login|register|recovery|verification|settings|error).*)',
+    "/((?!auth|api|_next/static|_next/image|favicon.ico).*)",
   ],
 }
