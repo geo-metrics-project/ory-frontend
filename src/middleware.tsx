@@ -13,7 +13,7 @@ export async function middleware(request: NextRequest) {
   // Since this is an auth subdomain, "/" shouldn't really exist.
   // We send them to Login by default.
   if (pathname === "/") {
-    return NextResponse.redirect(new URL("/login", request.url))
+    return NextResponse.redirect(new URL("/auth/login", request.url))
   }
 
   // 2. Run the standard Ory security check for everything else
@@ -25,6 +25,6 @@ export const config = {
     /* * Exclude the specific pages Kratos is pointing to:
      * login, registration, recovery, verification, error
      */
-    "/((?!login|registration|recovery|verification|error|api|_next/static|_next/image|favicon.ico).*)",
+    "/((?!auth|api|_next/static|_next/image|favicon.ico).*)",
   ],
 }
