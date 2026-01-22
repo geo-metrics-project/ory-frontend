@@ -5,7 +5,7 @@ import "./globals.css";
 import "@ory/elements-react/theme/styles.css";
 
 export const metadata: Metadata = {
-  title: "My Auth App",
+  title: "GEOMETRICS - Authentication",
   description: "Secure authentication with Ory",
 };
 
@@ -15,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="fr">
       <body className="antialiased">
         {children}
       </body>
