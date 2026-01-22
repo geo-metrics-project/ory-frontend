@@ -22,12 +22,9 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Run middleware on everything EXCEPT:
-     * - auth pages (login, registration, etc)
-     * - api routes
-     * - static files
+    /* * Exclude the specific pages Kratos is pointing to:
+     * login, registration, recovery, verification, error
      */
-    "/((?!auth|api|_next/static|_next/image|favicon.ico).*)",
+    "/((?!login|registration|recovery|verification|error|api|_next/static|_next/image|favicon.ico).*)",
   ],
 }
