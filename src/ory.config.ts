@@ -4,6 +4,12 @@ import type { OryClientConfiguration } from "@ory/elements-react"
 const config: OryClientConfiguration = {
   sdk: {
     url: process.env.NEXT_PUBLIC_ORY_SDK_URL || "https://kratos.combaldieu.fr/",
+    options: {
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    },
   },
   project: {
     default_locale: "fr",
