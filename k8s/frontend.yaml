@@ -20,7 +20,7 @@ spec:
         ports:
         - containerPort: 3000
         env:
-        - name: NEXT_PUBLIC_ORY_KRATOS_PUBLIC_URL
+        - name: NEXT_PUBLIC_ORY_SDK_URL
           value: "https://kratos.combaldieu.fr"
         resources:
           requests:
