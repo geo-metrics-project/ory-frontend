@@ -9,8 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ory/client": "^1.22.15",
     "@ory/elements-react": "^1.1.0",
-    "@ory/nextjs": "^1.0.0-rc.0",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3"
