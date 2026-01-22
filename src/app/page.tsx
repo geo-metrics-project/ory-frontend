@@ -1,14 +1,7 @@
-'use client'
-
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { redirect } from "next/navigation"
 
 export default function Home() {
-  const router = useRouter()
-
-  useEffect(() => {
-    router.push('/login')
-  }, [router])
-
-  return null
+  // Simply redirect to your login page on the server
+  // Make sure this matches the path in your ory.config.ts
+  redirect("/login")
 }
