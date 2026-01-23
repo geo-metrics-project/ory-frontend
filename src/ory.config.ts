@@ -16,7 +16,7 @@ const config: OryClientConfiguration = {
     default_redirect_url: "https://geometrics.combaldieu.fr",
     error_ui_url: "https://auth.combaldieu.fr/error",
     locale_behavior: "force_default",
-    name: "GEO-Metrics",
+    name: "Combaldieu.fr",
     registration_enabled: true,
     verification_enabled: true,
     recovery_enabled: true,
